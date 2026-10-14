@@ -11,9 +11,15 @@ export async function POST(req: Request) {
       });
     }
 
-    const formattedMessages = messages.map((m: any) => ({
-      role: m.role,
-      content: typeof m.content === 'string' ? m.content : '',
+    // AI SDK ModelMessage strict schema format
+    const formattedMessages = (messages || []).map((m: any) => ({
+      role: m.role === 'assistant' ? 'assistant' : 'user',
+      content: [
+        {
+          type: 'text',
+          text: typeof m.content === 'string' ? m.content : '',
+        },
+      ],
     }));
 
     const result = streamText({
