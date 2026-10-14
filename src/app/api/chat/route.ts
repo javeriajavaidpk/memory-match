@@ -16,8 +16,8 @@ export async function POST(req: Request) {
       parts: [{ text: typeof m.content === 'string' ? m.content : '' }],
     }));
 
-    // Use fast and broadly supported gemini-2.0-flash
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?key=${apiKey}`;
+    // Exact active model required by Google API
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:streamGenerateContent?key=${apiKey}`;
 
     const geminiRes = await fetch(url, {
       method: 'POST',
