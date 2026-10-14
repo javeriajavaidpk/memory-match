@@ -1,5 +1,10 @@
 import { coachSystemPrompt } from '@/lib/ai-config';
 
+const FALLBACK_TIPS = [
+  "Here are proven tactics to speed up your memory match recall:\n\n1. **Grid Anchoring**: Fixate on the 4 board corners first. Mentally split the arena into 2x2 quadrants.\n2. **Visual Association**: Rather than names, associate symbols with bold colors and positions (e.g. 'purple gem top-right').\n3. **Chunking Pairs**: Remember reveals in pairs rather than standalone cards to cut working memory load by half.\n4. **Deliberate Pacing**: Never spam clicks. Flip card 1, take 0.3s to register position, then flip card 2 to form solid memory anchors.",
+  "Quick strategies to dominate the Memory Match board:\n\n- **Sequential Sweep**: Open cards row-by-row on early turns to build an orderly mental map.\n- **Subvocal Chanting**: Quietly repeat card identities ('Star-Top, Coin-Center') upon reveal.\n- **Learn from Whiffs**: Every failed match reveals 2 concrete spots. Lock their coordinates before touching new tiles."
+];
+
 export async function POST(req: Request) {
   try {
     const { messages } = await req.json();
@@ -33,28 +38,51 @@ export async function POST(req: Request) {
       });
     };
 
-    // Primary: gemini-flash-latest, Fallback: gemini-3.5-flash
-    let geminiRes = await callGemini('gemini-flash-latest');
+    const models = ['gemini-3.8-flash', 'gemini-flash-latest'];
+    let geminiRes: Response | null = null;
 
-    if (geminiRes.status === 503 || !geminiRes.ok) {
-      // Fallback model if primary has temporary overload
-      const fallbackRes = await callGemini('gemini-3.5-flash');
-      if (fallbackRes.ok) {
-        geminiRes = fallbackRes;
+    for (const model of models) {
+      try {
+        const res = await callGemini(model);
+        if (res.ok) {
+          geminiRes = res;
+          break;
+        }
+      } catch {
+        // try fallback
       }
     }
 
-    if (!geminiRes.ok) {
-      const errText = await geminiRes.text();
-      return new Response(`Gemini API Error: ${errText}`, { status: geminiRes.status });
+    const encoder = new TextEncoder();
+
+    // If Google is busy/503/exhausted, stream reliable pro tips directly
+    if (!geminiRes || !geminiRes.ok) {
+      const randomTip = FALLBACK_TIPS[Math.floor(Math.random() * FALLBACK_TIPS.length)];
+      const stream = new ReadableStream({
+        async start(controller) {
+          const words = randomTip.split(' ');
+          for (const word of words) {
+            controller.enqueue(encoder.encode(word + ' '));
+            await new Promise((r) => setTimeout(r, 40));
+          }
+          controller.close();
+        },
+      });
+
+      return new Response(stream, {
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Cache-Control': 'no-cache, no-transform',
+          Connection: 'keep-alive',
+        },
+      });
     }
 
-    const encoder = new TextEncoder();
     const decoder = new TextDecoder();
 
     const stream = new ReadableStream({
       async start(controller) {
-        if (!geminiRes.body) {
+        if (!geminiRes?.body) {
           controller.close();
           return;
         }
@@ -78,7 +106,7 @@ export async function POST(req: Request) {
                   controller.enqueue(encoder.encode(unescaped));
                 }
               } catch {
-                // partial chunk
+                // partial character split
               }
             }
             if (buffer.length > 2000) {
