@@ -36,7 +36,7 @@ export async function POST(req: Request) {
     let aiReply = '';
 
     if (groqKey) {
-      const modelsToTry = ['llama3-8b-8192', 'llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'gemma2-9b-it'];
+      const modelsToTry = ['llama-3.3-70b-versatile', 'llama3-70b-8192', 'llama3-8b-8192', 'mixtral-8x7b-32768'];
       const formattedMessages = [
         {
           role: 'system',
@@ -98,6 +98,6 @@ export async function POST(req: Request) {
       },
     });
   } catch (error: any) {
-    return new Response('Coach is active! Ask any game tactic.', { status: 200 });
+    return new Response("Coach is online! What's your move?", { status: 200 });
   }
 }
