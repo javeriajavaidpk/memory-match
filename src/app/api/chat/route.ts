@@ -16,7 +16,7 @@ export async function POST(req: Request) {
       parts: [{ text: typeof m.content === 'string' ? m.content : '' }],
     }));
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent?alt=sse&key=${apiKey}`;
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?key=${apiKey}`;
 
     const geminiRes = await fetch(geminiUrl, {
       method: 'POST',
@@ -34,37 +34,54 @@ export async function POST(req: Request) {
 
     if (!geminiRes.ok) {
       const errText = await geminiRes.text();
-      console.error('Gemini API Error:', errText);
       return new Response(`Gemini API Error: ${errText}`, { status: geminiRes.status });
     }
 
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
 
-    const transformStream = new TransformStream({
-      transform(chunk, controller) {
-        const text = decoder.decode(chunk);
-        const lines = text.split('\n');
+    const stream = new ReadableStream({
+      async start(controller) {
+        if (!geminiRes.body) {
+          controller.close();
+          return;
+        }
 
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const dataStr = line.slice(6).trim();
-            if (!dataStr) continue;
-            try {
-              const parsed = JSON.parse(dataStr);
-              const chunkText = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
-              if (chunkText) {
-                controller.enqueue(encoder.encode(chunkText));
+        const reader = geminiRes.body.getReader();
+        let buffer = '';
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+
+            const regex = /"text":\s*"((?:[^"\\]|\\.)*)"/g;
+            let match;
+            while ((match = regex.exec(buffer)) !== null) {
+              try {
+                const unescaped = JSON.parse(`"${match[1]}"`);
+                if (unescaped) {
+                  controller.enqueue(encoder.encode(unescaped));
+                }
+              } catch {
+                // partial character split
               }
-            } catch (e) {
-              // ignore json parse splits
+            }
+            if (buffer.length > 2000) {
+              buffer = buffer.slice(-500);
             }
           }
+        } catch (err) {
+          controller.error(err);
+        } finally {
+          controller.close();
         }
       },
     });
 
-    return new Response(geminiRes.body?.pipeThrough(transformStream), {
+    return new Response(stream, {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
         'Cache-Control': 'no-cache, no-transform',
@@ -72,7 +89,6 @@ export async function POST(req: Request) {
       },
     });
   } catch (error: any) {
-    console.error('Chat API Error:', error);
     return new Response(error?.message || 'Internal Server Error', { status: 500 });
   }
 }
