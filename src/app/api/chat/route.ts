@@ -48,3 +48,4 @@ export async function POST(req: Request) {
     return new Response("Coach is active! Ask any game tactic.", { status: 200 });
   }
 }
+// trigger deploy: clean build
