@@ -16,21 +16,33 @@ export async function POST(req: Request) {
       parts: [{ text: typeof m.content === 'string' ? m.content : '' }],
     }));
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:streamGenerateContent?key=${apiKey}`;
+    const callGemini = async (model: string) => {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?key=${apiKey}`;
+      return fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [{ text: coachSystemPrompt }],
+          },
+          contents,
+          generationConfig: {
+            temperature: 0.7,
+          },
+        }),
+      });
+    };
 
-    const geminiRes = await fetch(geminiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: {
-          parts: [{ text: coachSystemPrompt }],
-        },
-        contents,
-        generationConfig: {
-          temperature: 0.7,
-        },
-      }),
-    });
+    // Primary: gemini-flash-latest, Fallback: gemini-3.5-flash
+    let geminiRes = await callGemini('gemini-flash-latest');
+
+    if (geminiRes.status === 503 || !geminiRes.ok) {
+      // Fallback model if primary has temporary overload
+      const fallbackRes = await callGemini('gemini-3.5-flash');
+      if (fallbackRes.ok) {
+        geminiRes = fallbackRes;
+      }
+    }
 
     if (!geminiRes.ok) {
       const errText = await geminiRes.text();
@@ -66,7 +78,7 @@ export async function POST(req: Request) {
                   controller.enqueue(encoder.encode(unescaped));
                 }
               } catch {
-                // partial character split
+                // partial chunk
               }
             }
             if (buffer.length > 2000) {
