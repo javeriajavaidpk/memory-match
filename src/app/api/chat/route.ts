@@ -13,9 +13,9 @@ export async function POST(req: Request) {
     } else if (p.includes('donkey') || p.includes('gadha') || p.includes('fool') || p.includes('stupid') || p.includes('idiot')) {
       reply = "Hey now! Even a donkey knows where the carrots are stashed. Let's see if your memory can match two cards in under 2 seconds! Ready to prove it?";
     } else if (p.includes('hello') || p.includes('hi') || p.includes('hey') || p.includes('salam')) {
-      reply = "Hey there! ?? I'm your AI Memory Coach. Whether you want to master grids, slash flip times, or build visual recall, I'm ready. What difficulty are you on?";
+      reply = "Hey there! I am your AI Memory Coach. Whether you want to master grids, slash flip times, or build visual recall, I am ready. What difficulty are you on?";
     } else if (p.includes('fast') || p.includes('speed') || p.includes('time') || p.includes('quick')) {
-      reply = "To cut your solve time in half:\n1. **Corner Anchors**: Memorize the 4 corners first as mental compass points.\n2. **Visual Chunking**: Group tiles in pairs rather than scanning one by one.\n3. **Whisper Echo**: Whisper the card name when flipped—auditory cues double retention.";
+      reply = "To cut your solve time in half: 1. Corner Anchors: Memorize the 4 corners first. 2. Visual Chunking: Group tiles in pairs rather than scanning one by one. 3. Whisper Echo: Whisper the card name when flipped to lock in retention.";
     } else if (p.includes('mismatch') || p.includes('wrong') || p.includes('fail')) {
       reply = "A mismatch is free intel! You now know the exact coordinates of two cards. Mentally register their spots before touching a fresh tile.";
     } else if (p.length <= 4 || (/^[a-z]+$/i.test(p) && !p.includes(' '))) {
