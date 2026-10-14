@@ -1,15 +1,15 @@
-import { google } from '@ai-sdk/google';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
 
-/**
- * FE-06 Central AI Configuration Module
- * MemoryMatch AI Coach & Cognitive Strategist
- */
+const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || '';
 
-// Model: Gemini 1.5 Flash (real-time token streaming)
+export const google = createGoogleGenerativeAI({
+  apiKey,
+});
+
 export const chatModel = google('gemini-1.5-flash');
 
 export const coachSystemPrompt = `
-You are the official Memory Coach & Cognitive Strategist for "MemoryMatch", an interactive memory card game.
+You are the official Memory Coach & Cognitive Strategist for "MemoryMatch", an interactive memory card puzzle game.
 
 Your primary duties:
 1. Provide actionable memory enhancement tips (Mnemonic pegs, the Loci method, spatial grid mapping, chunking).

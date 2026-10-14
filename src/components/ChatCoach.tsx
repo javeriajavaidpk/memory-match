@@ -71,8 +71,13 @@ export default function ChatCoach() {
         signal: controller.signal,
       });
 
-      if (!response.ok || !response.body) {
-        throw new Error('Failed to stream response');
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `Server error: ${response.status}`);
+      }
+
+      if (!response.body) {
+        throw new Error('No stream body received.');
       }
 
       const reader = response.body.getReader();
@@ -102,7 +107,15 @@ export default function ChatCoach() {
       if (err.name === 'AbortError') {
         console.log('Stream stopped by user');
       } else {
-        console.error('Chat error:', err);
+        const assistantMessageId = (Date.now() + 1).toString();
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: assistantMessageId,
+            role: 'assistant',
+            content: `?? Error: ${err.message || 'Failed to stream response.'}`,
+          },
+        ]);
       }
     } finally {
       setIsLoading(false);
@@ -159,6 +172,8 @@ export default function ChatCoach() {
                 className={`max-w-[85%] sm:max-w-[75%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${
                   m.role === 'user'
                     ? 'bg-indigo-600 text-white rounded-tr-sm'
+                    : m.content.startsWith('??')
+                    ? 'bg-rose-950/60 border border-rose-800/80 text-rose-300 rounded-tl-sm whitespace-pre-wrap'
                     : 'bg-slate-800/90 border border-slate-700/60 text-slate-200 rounded-tl-sm whitespace-pre-wrap'
                 }`}
               >
@@ -189,7 +204,7 @@ export default function ChatCoach() {
 
         <div ref={messagesEndRef} />
 
-        {/* Jump to bottom affordance */}
+        {/* Jump to latest affordance */}
         {userScrolledUp && (
           <button
             onClick={scrollToBottom}
