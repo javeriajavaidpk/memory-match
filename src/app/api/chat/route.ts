@@ -6,32 +6,21 @@ export async function POST(req: Request) {
 
     let reply = "";
 
-    // 1. Off-topic questions (driving, car, food, cooking)
     if (p.includes('drive') || p.includes('car')) {
       reply = "I can teach you how to drift through a 4x4 card grid, but driving a real car? Leave that to a driving instructor! Let's get your eyes back on the matching tiles.";
     } else if (p.includes('hungry') || p.includes('eat') || p.includes('food') || p.includes('cook')) {
       reply = "Grab some almonds or walnuts for brain power! Once you're fueled up, let's crush your memory high score.";
-    } 
-    // 2. Playful banter / insults
-    else if (p.includes('donkey') || p.includes('gadha') || p.includes('fool') || p.includes('stupid') || p.includes('idiot')) {
+    } else if (p.includes('donkey') || p.includes('gadha') || p.includes('fool') || p.includes('stupid') || p.includes('idiot')) {
       reply = "Hey now! Even a donkey knows where the carrots are stashed. Let's see if your memory can match two cards in under 2 seconds! Ready to prove it?";
-    } 
-    // 3. Greetings
-    else if (p.includes('hello') || p.includes('hi') || p.includes('hey') || p.includes('salam')) {
+    } else if (p.includes('hello') || p.includes('hi') || p.includes('hey') || p.includes('salam')) {
       reply = "Hey there! ?? I'm your AI Memory Coach. Whether you want to master grids, slash flip times, or build visual recall, I'm ready. What difficulty are you on?";
-    } 
-    // 4. Game tactics / Speed / Retention
-    else if (p.includes('fast') || p.includes('speed') || p.includes('time') || p.includes('quick')) {
+    } else if (p.includes('fast') || p.includes('speed') || p.includes('time') || p.includes('quick')) {
       reply = "To cut your solve time in half:\n1. **Corner Anchors**: Memorize the 4 corners first as mental compass points.\n2. **Visual Chunking**: Group tiles in pairs rather than scanning one by one.\n3. **Whisper Echo**: Whisper the card name when flipped—auditory cues double retention.";
     } else if (p.includes('mismatch') || p.includes('wrong') || p.includes('fail')) {
       reply = "A mismatch is free intel! You now know the exact coordinates of two cards. Mentally register their spots before touching a fresh tile.";
-    } 
-    // 5. Gibberish / random typing
-    else if (p.length <= 4 || (/^[a-z]+$/i.test(p) && !p.includes(' '))) {
+    } else if (p.length <= 4 || (/^[a-z]+$/i.test(p) && !p.includes(' '))) {
       reply = "Did your keyboard slip or did a cat walk across it? Drop a real game question and let's train your recall!";
-    } 
-    // 6. General game response
-    else {
+    } else {
       reply = "In Memory Match, impulsive clicking is your biggest enemy. Take a 0.3s pause between flips, build a mental grid map, and scan perimeter tiles first. What's your current move?";
     }
 
