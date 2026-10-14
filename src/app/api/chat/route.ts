@@ -1,4 +1,4 @@
-import { streamText, convertToCoreMessages } from 'ai';
+import { streamText, convertToModelMessages } from 'ai';
 import { chatModel, coachSystemPrompt } from '@/lib/ai-config';
 
 export async function POST(req: Request) {
@@ -11,7 +11,6 @@ export async function POST(req: Request) {
       });
     }
 
-    // Clean sanitized messages array
     const sanitizedMessages = (messages || []).map((m: any) => ({
       role: m.role === 'assistant' ? 'assistant' : 'user',
       content: typeof m.content === 'string' ? m.content : '',
@@ -20,7 +19,7 @@ export async function POST(req: Request) {
     const result = streamText({
       model: chatModel,
       system: coachSystemPrompt,
-      messages: convertToCoreMessages(sanitizedMessages),
+      messages: convertToModelMessages(sanitizedMessages),
       temperature: 0.7,
     });
 
