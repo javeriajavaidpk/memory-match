@@ -1,4 +1,4 @@
-import { streamText } from 'ai';
+import { streamText, convertToCoreMessages } from 'ai';
 import { chatModel, coachSystemPrompt } from '@/lib/ai-config';
 
 export async function POST(req: Request) {
@@ -11,21 +11,16 @@ export async function POST(req: Request) {
       });
     }
 
-    // AI SDK ModelMessage strict schema format
-    const formattedMessages = (messages || []).map((m: any) => ({
+    // Clean sanitized messages array
+    const sanitizedMessages = (messages || []).map((m: any) => ({
       role: m.role === 'assistant' ? 'assistant' : 'user',
-      content: [
-        {
-          type: 'text',
-          text: typeof m.content === 'string' ? m.content : '',
-        },
-      ],
+      content: typeof m.content === 'string' ? m.content : '',
     }));
 
     const result = streamText({
       model: chatModel,
       system: coachSystemPrompt,
-      messages: formattedMessages,
+      messages: convertToCoreMessages(sanitizedMessages),
       temperature: 0.7,
     });
 
