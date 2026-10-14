@@ -1,18 +1,23 @@
 'use client';
 
 import React, { useRef, useEffect, useState } from 'react';
-import { useChat } from '@ai-sdk/react';
 import { Send, Square, ArrowDown, Bot, User, Sparkles } from 'lucide-react';
 
+interface Message {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 export default function ChatCoach() {
-  const { messages, sendMessage, status, stop } = useChat();
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [userScrolledUp, setUserScrolledUp] = useState(false);
 
-  const isLoading = status === 'streaming' || status === 'submitted';
-
+  const abortControllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [userScrolledUp, setUserScrolledUp] = useState(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -32,12 +37,77 @@ export default function ChatCoach() {
     }
   }, [messages, isLoading, userScrolledUp]);
 
-  const onSubmit = async (e: React.FormEvent) => {
+  const stop = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setIsLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
-    const userText = input.trim();
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: input.trim(),
+    };
+
+    const newMessages = [...messages, userMessage];
+    setMessages(newMessages);
     setInput('');
-    await sendMessage({ text: userText });
+    setIsLoading(true);
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: newMessages }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok || !response.body) {
+        throw new Error('Failed to stream response');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      const assistantMessageId = (Date.now() + 1).toString();
+
+      let assistantContent = '';
+      setMessages((prev) => [
+        ...prev,
+        { id: assistantMessageId, role: 'assistant', content: '' },
+      ]);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        assistantContent += chunk;
+
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMessageId ? { ...msg, content: assistantContent } : msg
+          )
+        );
+      }
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        console.log('Stream stopped by user');
+      } else {
+        console.error('Chat error:', err);
+      }
+    } finally {
+      setIsLoading(false);
+      abortControllerRef.current = null;
+    }
   };
 
   return (
@@ -72,47 +142,39 @@ export default function ChatCoach() {
             </p>
           </div>
         ) : (
-          messages.map((m) => {
-            const textContent =
-              m.parts
-                ?.filter((p) => p.type === 'text')
-                .map((p) => (p as { text: string }).text)
-                .join('') || '';
+          messages.map((m) => (
+            <div
+              key={m.id}
+              className={`flex items-start gap-3 ${
+                m.role === 'user' ? 'justify-end' : 'justify-start'
+              }`}
+            >
+              {m.role !== 'user' && (
+                <div className="w-7 h-7 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 mt-0.5 shrink-0">
+                  <Bot className="w-4 h-4" />
+                </div>
+              )}
 
-            return (
               <div
-                key={m.id}
-                className={`flex items-start gap-3 ${
-                  m.role === 'user' ? 'justify-end' : 'justify-start'
+                className={`max-w-[85%] sm:max-w-[75%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${
+                  m.role === 'user'
+                    ? 'bg-indigo-600 text-white rounded-tr-sm'
+                    : 'bg-slate-800/90 border border-slate-700/60 text-slate-200 rounded-tl-sm whitespace-pre-wrap'
                 }`}
               >
-                {m.role !== 'user' && (
-                  <div className="w-7 h-7 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 mt-0.5 shrink-0">
-                    <Bot className="w-4 h-4" />
-                  </div>
-                )}
-
-                <div
-                  className={`max-w-[85%] sm:max-w-[75%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${
-                    m.role === 'user'
-                      ? 'bg-indigo-600 text-white rounded-tr-sm'
-                      : 'bg-slate-800/90 border border-slate-700/60 text-slate-200 rounded-tl-sm whitespace-pre-wrap'
-                  }`}
-                >
-                  {textContent}
-                </div>
-
-                {m.role === 'user' && (
-                  <div className="w-7 h-7 rounded-lg bg-slate-700 border border-slate-600 flex items-center justify-center text-slate-300 mt-0.5 shrink-0">
-                    <User className="w-4 h-4" />
-                  </div>
-                )}
+                {m.content}
               </div>
-            );
-          })
+
+              {m.role === 'user' && (
+                <div className="w-7 h-7 rounded-lg bg-slate-700 border border-slate-600 flex items-center justify-center text-slate-300 mt-0.5 shrink-0">
+                  <User className="w-4 h-4" />
+                </div>
+              )}
+            </div>
+          ))
         )}
 
-        {/* Thinking Indicator */}
+        {/* Thinking Indicator before first token */}
         {isLoading && messages[messages.length - 1]?.role === 'user' && (
           <div className="flex items-center gap-3">
             <div className="w-7 h-7 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
@@ -127,6 +189,7 @@ export default function ChatCoach() {
 
         <div ref={messagesEndRef} />
 
+        {/* Jump to bottom affordance */}
         {userScrolledUp && (
           <button
             onClick={scrollToBottom}
@@ -139,7 +202,7 @@ export default function ChatCoach() {
 
       {/* Input Form */}
       <form
-        onSubmit={onSubmit}
+        onSubmit={handleSubmit}
         className="p-3 md:p-4 border-t border-slate-800 bg-slate-950/50 backdrop-blur flex items-center gap-2"
       >
         <input
