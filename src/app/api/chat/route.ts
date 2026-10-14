@@ -1,7 +1,5 @@
 import { coachSystemPrompt } from '@/lib/ai-config';
 
-export const runtime = 'nodejs';
-
 export async function POST(req: Request) {
   try {
     const { messages } = await req.json();
@@ -13,7 +11,6 @@ export async function POST(req: Request) {
       });
     }
 
-    // Prepare contents array for Gemini API
     const contents = (messages || []).map((m: any) => ({
       role: m.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: typeof m.content === 'string' ? m.content : '' }],
@@ -41,7 +38,6 @@ export async function POST(req: Request) {
       return new Response(`Gemini API Error: ${errText}`, { status: geminiRes.status });
     }
 
-    // Stream SSE text chunks back to client
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
 
@@ -53,7 +49,7 @@ export async function POST(req: Request) {
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             const dataStr = line.slice(6).trim();
-            if (!dataStr || dataStr === '[DONE]') continue;
+            if (!dataStr) continue;
             try {
               const parsed = JSON.parse(dataStr);
               const chunkText = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -61,7 +57,7 @@ export async function POST(req: Request) {
                 controller.enqueue(encoder.encode(chunkText));
               }
             } catch (e) {
-              // ignore parse errors on fragmented SSE lines
+              // ignore json parse splits
             }
           }
         }
