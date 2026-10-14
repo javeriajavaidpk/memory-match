@@ -6,9 +6,7 @@ export async function POST(req: Request) {
     const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
 
     if (!apiKey) {
-      return new Response('API key GOOGLE_GENERATIVE_AI_API_KEY is missing on server.', {
-        status: 500,
-      });
+      return new Response('API key missing on server.', { status: 500 });
     }
 
     const contents = (messages || []).map((m: any) => ({
@@ -16,7 +14,6 @@ export async function POST(req: Request) {
       parts: [{ text: typeof m.content === 'string' ? m.content : '' }],
     }));
 
-    // Standard fast generateContent endpoint (non-blocking & immediate)
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`;
 
     const geminiRes = await fetch(url, {
@@ -28,23 +25,20 @@ export async function POST(req: Request) {
         },
         contents,
         generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 500,
+          temperature: 0.8,
+          maxOutputTokens: 300,
         },
       }),
     });
 
     if (!geminiRes.ok) {
       const err = await geminiRes.text();
-      return new Response(`Coach API Error: ${err}`, { status: geminiRes.status });
+      return new Response(`Gemini API Error: ${err}`, { status: geminiRes.status });
     }
 
     const data = await geminiRes.json();
-    const aiReply =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-      "I'm here to help you strategize your memory game! What specific part of the board are you working on?";
+    const aiReply = data?.candidates?.[0]?.content?.parts?.[0]?.text || "Coach ready! What's your move?";
 
-    // Stream the actual AI text smoothly word-by-word into the client
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
@@ -66,6 +60,6 @@ export async function POST(req: Request) {
       },
     });
   } catch (error: any) {
-    return new Response(error?.message || 'Server Internal Error', { status: 500 });
+    return new Response(error?.message || 'Server error', { status: 500 });
   }
 }
