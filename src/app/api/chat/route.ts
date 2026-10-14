@@ -1,50 +1,92 @@
-function getCoachResponse(prompt: string): string {
-  const p = (prompt || '').trim().toLowerCase();
-
-  if (p.includes('donkey') || p.includes('gadha') || p.includes('fool') || p.includes('stupid') || p.includes('idiot')) {
-    return "Hey now! Even a donkey knows how to remember where the carrots are hidden! Let's see if you can remember where the matching cards are on the grid. Back to focus, champ!";
-  }
-
-  if (p.includes('hello') || p.includes('hi') || p.includes('hey') || p.includes('salam')) {
-    return "Hey there! ?? I'm your AI Memory Coach. Whether you want to master card grids, slash your flip time, or build solid recall, I've got your back. Ready to play?";
-  }
-
-  if (p.includes('faster') || p.includes('speed') || p.includes('fast') || p.includes('quick')) {
-    return "To cut your solve time in half:\n\n1. **The Corner Anchor**: Memorize the 4 corners of the board first to create reference points.\n2. **Visual Chunking**: Group tiles in pairs or 2x2 blocks rather than scanning individually.\n3. **Verbal Echoing**: Whisper the card identity immediately upon reveal (e.g. 'Blue Star Top-Right').\n4. **Rhythm**: Don't spam clicks; pause 0.3s between flips.";
-  }
-
-  if (p.includes('mismatch') || p.includes('wrong') || p.includes('mistake')) {
-    return "A mismatch is free intel! Every time two cards flip back down, you now have the exact coordinates of two cards. Mentally register their spots before touching a single new tile.";
-  }
-
-  if (p.includes('top right') || p.includes('corner') || p.includes('forget')) {
-    return "When a specific sector slips your mind, use the **Quadrant Method**: Mentally divide the board into 4 quarters and completely clear one quadrant before moving to the next.";
-  }
-
-  if (p.length <= 3) {
-    return "Looks like your fingers slipped on the keys! What part of the Memory Match board do you want help with?";
-  }
-
-  return "That's a smart tactical question. In Memory Match, 80% of errors come from impulsive clicking. Take a breath, build a mental map of revealed cards, and scan adjacent tiles first. How is your current game going?";
-}
+import { coachSystemPrompt } from '@/lib/ai-config';
 
 export async function POST(req: Request) {
   try {
     const { messages } = await req.json();
-    const lastUserPrompt = [...(messages || [])].reverse().find((m: any) => m.role === 'user')?.content || '';
+    const groqKey = process.env.GROQ_API_KEY;
 
-    const replyText = getCoachResponse(lastUserPrompt);
+    if (!groqKey) {
+      return new Response('GROQ_API_KEY is missing in environment variables.', { status: 500 });
+    }
+
+    const formattedMessages = [
+      {
+        role: 'system',
+        content: `${coachSystemPrompt}
+
+Additional Instructions:
+- You are strictly an interactive Memory Coach for the card flip puzzle game "Memory Match".
+- If the user asks completely off-topic questions (e.g. driving, cooking, recipes, general news), react playfully with wit in 1-2 lines, politely refuse, and pull them right back to card flip memory training.
+- If the user sends insults, playful teasers, or random words (e.g. "donkey", "you fool"), respond humorously without getting offended, and challenge them to prove their memory skills on the board.
+- If the user types gibberish (e.g. "asdfghjkl", "df"), playfully ask if their keyboard slipped and invite a real game question.
+- Always keep responses punchy, concise, and engaging (2 to 4 sentences maximum).`
+      },
+      ...(messages || []).map((m: any) => ({
+        role: m.role === 'assistant' ? 'assistant' : 'user',
+        content: typeof m.content === 'string' ? m.content : '',
+      }))
+    ];
+
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${groqKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: formattedMessages,
+        temperature: 0.7,
+        max_tokens: 300,
+        stream: true,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      return new Response(`AI Engine Error: ${err}`, { status: res.status });
+    }
+
     const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
 
     const stream = new ReadableStream({
       async start(controller) {
-        const words = replyText.split(' ');
-        for (let i = 0; i < words.length; i++) {
-          const suffix = i === words.length - 1 ? '' : ' ';
-          controller.enqueue(encoder.encode(words[i] + suffix));
-          await new Promise((r) => setTimeout(r, 22));
+        if (!res.body) {
+          controller.close();
+          return;
         }
-        controller.close();
+
+        const reader = res.body.getReader();
+        let buffer = '';
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (trimmed.startsWith('data: ') && trimmed !== 'data: [DONE]') {
+                try {
+                  const json = JSON.parse(trimmed.slice(6));
+                  const delta = json.choices?.[0]?.delta?.content;
+                  if (delta) {
+                    controller.enqueue(encoder.encode(delta));
+                  }
+                } catch {}
+              }
+            }
+          }
+        } catch (err) {
+          controller.error(err);
+        } finally {
+          controller.close();
+        }
       },
     });
 
@@ -56,6 +98,6 @@ export async function POST(req: Request) {
       },
     });
   } catch (error: any) {
-    return new Response('Coach is online!', { status: 200 });
+    return new Response(error?.message || 'Server error', { status: 500 });
   }
 }
