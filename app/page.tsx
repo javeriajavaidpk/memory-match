@@ -10,30 +10,22 @@ interface Card {
   isMatched: boolean;
 }
 
-interface LevelData {
-  stars: number;
-}
-
 const LEVELS_PER_PAGE = 12;
 
+// Dark, vibrant, high-contrast emojis jo white background par chamkein
 const KIDS_THEMES = [
-  { emojis: ["🦁", "🐼", "🐵", "🐘", "🦒", "🦊", "🐰", "🐸"] },
-  { emojis: ["🍕", "🍔", "🍦", "🍩", "🍓", "🍟", "🧁", "🍉"] },
-  { emojis: ["🚀", "⭐", "🛸", "🌍", "👾", "🌙", "☄️", "🪐"] },
-  { emojis: ["🐬", "🐙", "🐠", "🦀", "🦈", "🐳", "🐢", "🐡"] },
-  { emojis: ["🚗", "🏎️", "🚀", "🚁", "🚂", "🚜", "🚲", "⛵"] },
-  { emojis: ["🎸", "🎨", "⚽", "🏀", "🎮", "🧸", "🪁", "🎁"] },
+  { emojis: ["🦁", "🐼", "🦊", "🐸", "🐯", "🐵", "🐘", "🦄"] },
+  { emojis: ["🍓", "🍉", "🍒", "🍕", "🍔", "🍟", "🍩", "🌮"] },
+  { emojis: ["🚀", "🛸", "👾", "⭐", "🪐", "🌍", "⚡", "🔥"] },
+  { emojis: ["🐬", "🐙", "🦀", "🦈", "🐠", "🐳", "🐢", "🐡"] },
+  { emojis: ["🚗", "🏎️", "🚁", "🚂", "🚜", "⛵", "🚒", "🏍️"] },
+  { emojis: ["🎮", "🎨", "⚽", "🏀", "🏆", "🎯", "🎸", "🎲"] },
 ];
 
 export default function KidsMemoryWorld() {
   const [currentScreen, setCurrentScreen] = useState<"map" | "playing">("map");
-  
-  // Track highest unlocked level (starts at 1, goes to infinity)
   const [highestUnlocked, setHighestUnlocked] = useState<number>(1);
-  // Track stars per level: { [levelNumber]: starsCount }
   const [levelStars, setLevelStars] = useState<Record<number, number>>({});
-  
-  // Map Pagination: Page 0 = Levels 1-12, Page 1 = Levels 13-24, etc.
   const [mapPage, setMapPage] = useState<number>(0);
 
   const [activeLevel, setActiveLevel] = useState<number>(1);
@@ -100,7 +92,6 @@ export default function KidsMemoryWorld() {
     setFlippedCards([]);
     setMatchedPairs(0);
     setMoves(0);
-    // Dynamic difficulty: timer tightens slightly but never below 25s
     const allocatedTime = Math.max(25, 50 - Math.floor((lvlNum - 1) * 1.5));
     setTimeLeft(allocatedTime);
     setIsWon(false);
@@ -187,17 +178,14 @@ export default function KidsMemoryWorld() {
     }
     setStarsEarned(earned);
 
-    // Save stars for this level
     setLevelStars((prev) => ({
       ...prev,
       [activeLevel]: Math.max(prev[activeLevel] || 0, earned),
     }));
 
-    // Unlock next level infinitely
     const nextLevelNum = activeLevel + 1;
     setHighestUnlocked((prev) => Math.max(prev, nextLevelNum));
 
-    // Automatically update map page if user reached a higher chapter
     const targetPage = Math.floor((nextLevelNum - 1) / LEVELS_PER_PAGE);
     if (targetPage > mapPage) {
       setMapPage(targetPage);
@@ -226,7 +214,6 @@ export default function KidsMemoryWorld() {
     }
   };
 
-  // Generate levels for current world page
   const currentLevels = Array.from({ length: LEVELS_PER_PAGE }, (_, i) => {
     const lvlNum = mapPage * LEVELS_PER_PAGE + (i + 1);
     return {
@@ -237,9 +224,9 @@ export default function KidsMemoryWorld() {
   });
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 text-white flex flex-col items-center justify-center p-3 select-none relative font-sans overflow-x-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-purple-950 to-slate-950 text-white flex flex-col items-center justify-center p-3 select-none relative font-sans overflow-x-hidden">
       
-      {/* SCREEN 1: INFINITE LEVELS MAP */}
+      {/* SCREEN 1: LEVEL MAP */}
       {currentScreen === "map" && (
         <div className="w-full max-w-md bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-5 shadow-2xl flex flex-col items-center animate-in zoom-in-95 duration-200">
           <div className="text-3xl mb-1">🏰</div>
@@ -255,7 +242,6 @@ export default function KidsMemoryWorld() {
             </span>
           </div>
 
-          {/* 3x4 Grid for Current 12 Levels */}
           <div className="grid grid-cols-3 gap-3.5 w-full">
             {currentLevels.map((lvl) => (
               <button
@@ -266,7 +252,7 @@ export default function KidsMemoryWorld() {
                 className={`relative aspect-square rounded-2xl flex flex-col items-center justify-center border-4 shadow-lg transition-all active:scale-95 ${
                   lvl.unlocked
                     ? "bg-gradient-to-b from-yellow-300 to-amber-500 border-amber-200 text-amber-950 hover:brightness-110 cursor-pointer shadow-amber-500/30"
-                    : "bg-slate-800/60 border-slate-700/60 text-slate-500 cursor-not-allowed opacity-60"
+                    : "bg-slate-900/60 border-slate-800 text-slate-500 cursor-not-allowed opacity-60"
                 }`}
               >
                 {lvl.unlocked ? (
@@ -292,7 +278,6 @@ export default function KidsMemoryWorld() {
             ))}
           </div>
 
-          {/* Infinite World Navigator Buttons */}
           <div className="flex items-center justify-between w-full mt-4 pt-3 border-t border-white/10">
             <button
               disabled={mapPage === 0}
@@ -366,6 +351,7 @@ export default function KidsMemoryWorld() {
             </div>
           </div>
 
+          {/* 4x4 Cards Grid */}
           <div className="grid grid-cols-4 gap-2.5 w-full aspect-square bg-white/10 backdrop-blur-lg p-3 rounded-3xl border border-white/20 shadow-2xl">
             {cards.map((card) => {
               const isRevealed = card.isFlipped || card.isMatched;
@@ -381,20 +367,20 @@ export default function KidsMemoryWorld() {
                       ? `Revealed: ${card.emoji}`
                       : "Hidden Card"
                   }
-                  className={`aspect-square rounded-2xl flex items-center justify-center text-3xl font-bold transition-all duration-300 transform active:scale-95 shadow-md ${
+                  className={`aspect-square rounded-2xl flex items-center justify-center transition-all duration-300 transform active:scale-95 shadow-md ${
                     card.isMatched
-                      ? "bg-emerald-400/80 border-2 border-emerald-200 scale-95 opacity-90 shadow-emerald-400/30"
+                      ? "bg-emerald-400/90 border-4 border-emerald-200 scale-95 opacity-90 shadow-emerald-400/40"
                       : isRevealed
-                      ? "bg-white text-slate-900 border-4 border-amber-300 shadow-xl"
+                      ? "bg-white text-slate-900 border-4 border-yellow-400 shadow-2xl shadow-yellow-400/30 scale-100"
                       : "bg-gradient-to-tr from-pink-500 to-purple-600 border-2 border-pink-300/60 hover:brightness-110"
                   }`}
                 >
                   {isRevealed ? (
-                    <span className="animate-in zoom-in-50 duration-200">
+                    <span className="text-4xl sm:text-5xl filter drop-shadow-md select-none transform transition-transform animate-in zoom-in-75 duration-200">
                       {card.emoji}
                     </span>
                   ) : (
-                    <span className="text-pink-200 text-xl font-black">?</span>
+                    <span className="text-pink-200 text-2xl font-black">?</span>
                   )}
                 </button>
               );
@@ -403,7 +389,7 @@ export default function KidsMemoryWorld() {
         </div>
       )}
 
-      {/* POPUP 1: 3-STAR VICTORY MODAL WITH INFINITE NEXT LEVEL */}
+      {/* POPUP 1: 3-STAR VICTORY MODAL */}
       {isWon && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="w-full max-w-xs bg-gradient-to-b from-indigo-900 via-purple-900 to-slate-950 border-4 border-yellow-400 rounded-3xl p-6 shadow-2xl flex flex-col items-center text-center relative overflow-hidden animate-in zoom-in-90 duration-300">
