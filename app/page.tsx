@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import confetti from "canvas-confetti";
 
 interface Card {
   id: number;
@@ -9,110 +10,146 @@ interface Card {
   isMatched: boolean;
 }
 
-const EMOJI_SETS: string[][] = [
-  ["🚀", "⚡", "🧠", "💎", "🔥", "🎯", "🛡️", "🔮"],
-  ["👾", "🕹️", "⚔️", "🏆", "🎲", "🧩", "🌟", "💣"],
-  ["🤖", "🛸", "🧬", "🧪", "🛰️", "⚙️", "🌌", "🧿"],
-  ["🦁", "🐉", "🦅", "🐺", "🦈", "🐍", "🐅", "🦂"],
+interface LevelData {
+  levelNumber: number;
+  unlocked: boolean;
+  stars: number;
+  bestScore: number;
+}
+
+const TOTAL_LEVELS = 12;
+
+const KIDS_THEMES: { title: string; emojis: string[]; bgGradient: string }[] = [
+  {
+    title: "Jungle Safari 🦁",
+    emojis: ["🦁", "🐼", "🐵", "🐘", "🦒", "🦊", "🐰", "🐸"],
+    bgGradient: "from-amber-400 via-orange-400 to-yellow-300",
+  },
+  {
+    title: "Yummy Treats 🍩",
+    emojis: ["🍕", "🍔", "🍦", "🍩", "🍓", "🍟", "🧁", "🍉"],
+    bgGradient: "from-pink-400 via-rose-400 to-amber-200",
+  },
+  {
+    title: "Space Adventure 🚀",
+    emojis: ["🚀", "⭐", "🛸", "🌍", "👾", "🌙", "☄️", "🪐"],
+    bgGradient: "from-indigo-500 via-purple-500 to-sky-400",
+  },
+  {
+    title: "Ocean Wonders 🐬",
+    emojis: ["🐬", "🐙", "🐠", "🦀", "🦈", "🐳", "🐢", "🐡"],
+    bgGradient: "from-cyan-400 via-teal-400 to-blue-400",
+  },
 ];
 
-export default function MemoryMatchPro() {
-  const [level, setLevel] = useState<number>(1);
+export default function KidsMemoryWorld() {
+  const [currentScreen, setCurrentScreen] = useState<"map" | "playing">("map");
+  
+  const [levels, setLevels] = useState<LevelData[]>(() => {
+    return Array.from({ length: TOTAL_LEVELS }, (_, i) => ({
+      levelNumber: i + 1,
+      unlocked: i === 0,
+      stars: 0,
+      bestScore: 0,
+    }));
+  });
+
+  const [activeLevel, setActiveLevel] = useState<number>(1);
   const [cards, setCards] = useState<Card[]>([]);
   const [flippedCards, setFlippedCards] = useState<number[]>([]);
   const [matchedPairs, setMatchedPairs] = useState<number>(0);
   const [moves, setMoves] = useState<number>(0);
-  const [score, setScore] = useState<number>(0);
   const [timeLeft, setTimeLeft] = useState<number>(45);
-  const [isGameActive, setIsGameActive] = useState<boolean>(false);
   const [isWon, setIsWon] = useState<boolean>(false);
   const [isLost, setIsLost] = useState<boolean>(false);
-  
-  // AI Coach States
-  const [aiAnalysis, setAiAnalysis] = useState<string>("");
-  const [aiTier, setAiTier] = useState<string>("");
-  const [aiLoading, setAiLoading] = useState<boolean>(false);
-  
+  const [starsEarned, setStarsEarned] = useState<number>(0);
+  const [aiCheer, setAiCheer] = useState<string>("");
+
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Initialize a new board
-  const initializeLevel = useCallback((targetLevel: number) => {
-    const setIndex = (targetLevel - 1) % EMOJI_SETS.length;
-    const currentVault = EMOJI_SETS[setIndex];
-    const paired = [...currentVault, ...currentVault];
-    
-    // Fisher-Yates Shuffle
+  const launchPartyBlast = () => {
+    try {
+      const end = Date.now() + 1.2 * 1000;
+      const colors = ["#ff595e", "#ffca3a", "#8ac926", "#1982c4", "#6a4c93"];
+
+      (function frame() {
+        confetti({
+          particleCount: 5,
+          angle: 60,
+          spread: 55,
+          origin: { x: 0, y: 0.7 },
+          colors,
+        });
+        confetti({
+          particleCount: 5,
+          angle: 120,
+          spread: 55,
+          origin: { x: 1, y: 0.7 },
+          colors,
+        });
+
+        if (Date.now() < end) {
+          requestAnimationFrame(frame);
+        }
+      })();
+    } catch {
+      // Safe fallback
+    }
+  };
+
+  const startLevel = useCallback((lvlNum: number) => {
+    setActiveLevel(lvlNum);
+    const themeIndex = (lvlNum - 1) % KIDS_THEMES.length;
+    const currentTheme = KIDS_THEMES[themeIndex];
+    const paired = [...currentTheme.emojis, ...currentTheme.emojis];
+
     for (let i = paired.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [paired[i], paired[j]] = [paired[j], paired[i]];
     }
 
-    const initialCards: Card[] = paired.map((emoji, index) => ({
-      id: index,
-      emoji,
-      isFlipped: false,
-      isMatched: false,
-    }));
+    setCards(
+      paired.map((emoji, index) => ({
+        id: index,
+        emoji,
+        isFlipped: false,
+        isMatched: false,
+      }))
+    );
 
-    setCards(initialCards);
     setFlippedCards([]);
     setMatchedPairs(0);
     setMoves(0);
-    // Dynamic timer: shrinks as level increases to raise difficulty
-    const allocatedTime = Math.max(25, 50 - (targetLevel - 1) * 3);
-    setTimeLeft(allocatedTime);
+    setTimeLeft(50);
     setIsWon(false);
     setIsLost(false);
-    setIsGameActive(true);
-    setAiAnalysis("");
-    setAiTier("");
+    setStarsEarned(0);
+    setAiCheer("");
+    setCurrentScreen("playing");
   }, []);
 
-  // Initial load
   useEffect(() => {
-    initializeLevel(1);
-  }, [initializeLevel]);
-
-  // Real-time Countdown Timer
-  useEffect(() => {
-    if (isGameActive && timeLeft > 0 && !isWon && !isLost) {
+    if (currentScreen === "playing" && timeLeft > 0 && !isWon && !isLost) {
       timerRef.current = setTimeout(() => {
         setTimeLeft((prev) => prev - 1);
       }, 1000);
-    } else if (timeLeft === 0 && isGameActive && !isWon) {
+    } else if (timeLeft === 0 && currentScreen === "playing" && !isWon) {
       setIsLost(true);
-      setIsGameActive(false);
-      triggerHaptic([100, 50, 100, 50, 200]);
     }
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [timeLeft, isGameActive, isWon, isLost]);
+  }, [timeLeft, currentScreen, isWon, isLost]);
 
-  // Haptic feedback for tactile feel
-  const triggerHaptic = (pattern: number | number[]) => {
-    if (typeof window !== "undefined" && "vibrate" in navigator) {
-      try {
-        navigator.vibrate(pattern);
-      } catch {
-        // Safe fallback
-      }
-    }
-  };
-
-  // Card click handler
   const handleCardClick = (id: number) => {
-    if (!isGameActive || isWon || isLost) return;
-    if (flippedCards.length === 2) return;
-    const targetCard = cards.find((c) => c.id === id);
-    if (!targetCard || targetCard.isFlipped || targetCard.isMatched) return;
+    if (flippedCards.length === 2 || isWon || isLost) return;
+    const target = cards.find((c) => c.id === id);
+    if (!target || target.isFlipped || target.isMatched) return;
 
-    triggerHaptic(20);
-
-    const updatedCards = cards.map((c) =>
+    const updated = cards.map((c) =>
       c.id === id ? { ...c, isFlipped: true } : c
     );
-    setCards(updatedCards);
+    setCards(updated);
 
     const newFlipped = [...flippedCards, id];
     setFlippedCards(newFlipped);
@@ -124,8 +161,6 @@ export default function MemoryMatchPro() {
       const secondCard = cards.find((c) => c.id === secondId);
 
       if (firstCard && secondCard && firstCard.emoji === secondCard.emoji) {
-        // Matched
-        triggerHaptic([30, 40, 60]);
         setTimeout(() => {
           setCards((prev) =>
             prev.map((c) =>
@@ -136,16 +171,14 @@ export default function MemoryMatchPro() {
           );
           setFlippedCards([]);
           setMatchedPairs((p) => {
-            const nextPairs = p + 1;
-            setScore((s) => s + 150 + timeLeft * 5);
-            if (nextPairs === 8) {
-              handleVictory();
+            const nextP = p + 1;
+            if (nextP === 8) {
+              handleWin();
             }
-            return nextPairs;
+            return nextP;
           });
-        }, 350);
+        }, 300);
       } else {
-        // Not matched
         setTimeout(() => {
           setCards((prev) =>
             prev.map((c) =>
@@ -155,252 +188,291 @@ export default function MemoryMatchPro() {
             )
           );
           setFlippedCards([]);
-        }, 750);
+        }, 700);
       }
     }
   };
 
-  // Victory Trigger
-  const handleVictory = () => {
+  const handleWin = () => {
     setIsWon(true);
-    setIsGameActive(false);
-    triggerHaptic([50, 100, 150, 200]);
-    requestAiCoachEvaluation();
+    launchPartyBlast();
+
+    let earned = 1;
+    if (moves <= 14 && timeLeft >= 20) {
+      earned = 3;
+    } else if (moves <= 20) {
+      earned = 2;
+    }
+    setStarsEarned(earned);
+
+    fetchAiEvaluation(earned);
+
+    setLevels((prev) =>
+      prev.map((lvl) => {
+        if (lvl.levelNumber === activeLevel) {
+          return {
+            ...lvl,
+            stars: Math.max(lvl.stars, earned),
+          };
+        }
+        if (lvl.levelNumber === activeLevel + 1) {
+          return { ...lvl, unlocked: true };
+        }
+        return lvl;
+      })
+    );
   };
 
-  // AI Evaluation Request
-  const requestAiCoachEvaluation = async () => {
-    setAiLoading(true);
+  const fetchAiEvaluation = async (stars: number) => {
     try {
-      const response = await fetch("/api/ai-coach", {
+      const res = await fetch("/api/ai-coach", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          level,
+          level: activeLevel,
           moves: moves + 1,
           timeRemaining: timeLeft,
-          totalScore: score + 500,
         }),
       });
-      const data = await response.json();
-      setAiTier(data.tier || "Tier-A");
-      setAiAnalysis(data.analysis || "Outstanding neural pathway recall! High cognitive accuracy.");
+      const data = await res.json();
+      setAiCheer(data.analysis);
     } catch {
-      setAiTier("Tier-A");
-      setAiAnalysis("Exceptional spatial mapping speed and move precision across the neural matrix.");
-    } finally {
-      setAiLoading(false);
+      if (stars === 3) setAiCheer("Superstar! Your memory is lightning fast! ⭐⭐⭐");
+      else if (stars === 2) setAiCheer("Awesome Job! You have a super sharp brain! ⭐⭐");
+      else setAiCheer("Great effort! Play again to collect all 3 stars! ⭐");
     }
   };
 
-  const handleNextLevel = () => {
-    const nextLvl = level + 1;
-    setLevel(nextLvl);
-    initializeLevel(nextLvl);
-  };
-
-  const handleRestartGame = () => {
-    setLevel(1);
-    setScore(0);
-    initializeLevel(1);
-  };
-
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-between p-4 sm:p-6 relative overflow-hidden font-sans selection:bg-cyan-500 selection:text-black">
-      {/* Dynamic Cyberpunk Ambient Glow Background */}
-      <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-cyan-600/15 rounded-full blur-[140px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-purple-600/15 rounded-full blur-[140px] pointer-events-none" />
+    <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 text-white flex flex-col items-center justify-center p-3 select-none relative font-sans overflow-x-hidden">
+      {currentScreen === "map" && (
+        <div className="w-full max-w-md bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-6 shadow-2xl flex flex-col items-center animate-in zoom-in-95 duration-200">
+          <div className="text-4xl mb-1">🏰</div>
+          <h1 className="text-3xl font-black text-amber-300 drop-shadow-md tracking-wide">
+            SUPER MEMORY
+          </h1>
+          <p className="text-sm font-semibold text-pink-200 mb-6">Select a Level to Play!</p>
 
-      {/* Top Header / Status HUD */}
-      <header className="w-full max-w-md flex flex-col gap-3 z-10">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-black tracking-wider bg-gradient-to-r from-cyan-400 via-teal-300 to-indigo-400 bg-clip-text text-transparent">
-              NEURAL MATCH
-            </h1>
-            <p className="text-xs text-slate-400 tracking-wide">
-              LEVEL <span className="text-cyan-400 font-bold">{level}</span> • COGNITIVE ARENA
-            </p>
-          </div>
-          <button
-            onClick={() => initializeLevel(level)}
-            aria-label="Restart Current Level"
-            className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-500 hover:text-cyan-400 transition-all shadow-sm active:scale-95"
-          >
-            Reset
-          </button>
-        </div>
-
-        {/* Dashboard Indicators */}
-        <div className="grid grid-cols-4 gap-2 bg-slate-900/80 backdrop-blur-md p-3 rounded-2xl border border-slate-800 shadow-xl">
-          <div className="flex flex-col items-center">
-            <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Time</span>
-            <span
-              className={`text-base font-extrabold font-mono transition-colors ${
-                timeLeft <= 10 ? "text-rose-500 animate-pulse" : "text-amber-400"
-              }`}
-            >
-              {timeLeft}s
-            </span>
-          </div>
-
-          <div className="flex flex-col items-center border-l border-slate-800">
-            <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Moves</span>
-            <span className="text-base font-extrabold font-mono text-cyan-400">{moves}</span>
-          </div>
-
-          <div className="flex flex-col items-center border-l border-slate-800">
-            <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Pairs</span>
-            <span className="text-base font-extrabold font-mono text-emerald-400">{matchedPairs}/8</span>
-          </div>
-
-          <div className="flex flex-col items-center border-l border-slate-800">
-            <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Score</span>
-            <span className="text-base font-extrabold font-mono text-indigo-400">{score}</span>
-          </div>
-        </div>
-      </header>
-
-      {/* Main 4x4 Glassmorphic Gaming Matrix */}
-      <section 
-        className="w-full max-w-md my-auto py-4 z-10"
-        aria-label="Interactive Game Matrix"
-      >
-        <div className="grid grid-cols-4 gap-2.5 sm:gap-3 aspect-square w-full p-3 bg-slate-900/40 backdrop-blur-xl rounded-3xl border border-slate-800/80 shadow-2xl">
-          {cards.map((card) => {
-            const isVisible = card.isFlipped || card.isMatched;
-            return (
+          <div className="grid grid-cols-3 gap-4 w-full">
+            {levels.map((lvl) => (
               <button
-                key={card.id}
-                onClick={() => handleCardClick(card.id)}
-                disabled={card.isMatched || !isGameActive}
-                aria-label={
-                  card.isMatched
-                    ? `Matched: ${card.emoji}`
-                    : card.isFlipped
-                    ? `Revealed: ${card.emoji}`
-                    : "Hidden Card"
-                }
-                className={`relative rounded-2xl flex items-center justify-center select-none cursor-pointer transition-all duration-300 transform active:scale-95 text-2xl sm:text-3xl font-bold shadow-md ${
-                  card.isMatched
-                    ? "bg-emerald-500/10 border-2 border-emerald-500/50 shadow-emerald-500/20 opacity-80"
-                    : isVisible
-                    ? "bg-slate-800 border-2 border-cyan-400 shadow-cyan-500/30 rotate-y-180"
-                    : "bg-gradient-to-br from-slate-800/90 to-slate-900/90 border border-slate-700/60 hover:border-slate-500 hover:shadow-lg hover:shadow-cyan-500/10"
+                key={lvl.levelNumber}
+                disabled={!lvl.unlocked}
+                onClick={() => startLevel(lvl.levelNumber)}
+                aria-label={`Level ${lvl.levelNumber}${lvl.unlocked ? "" : " Locked"}`}
+                className={`relative aspect-square rounded-2xl flex flex-col items-center justify-center border-4 shadow-lg transition-all active:scale-95 ${
+                  lvl.unlocked
+                    ? "bg-gradient-to-b from-yellow-300 to-amber-500 border-amber-200 text-amber-950 hover:brightness-110 cursor-pointer shadow-amber-500/30"
+                    : "bg-slate-800/60 border-slate-700/60 text-slate-500 cursor-not-allowed opacity-60"
                 }`}
               >
-                {isVisible ? (
-                  <span className="animate-in fade-in zoom-in-75 duration-200">
-                    {card.emoji}
-                  </span>
+                {lvl.unlocked ? (
+                  <>
+                    <span className="text-2xl font-black">{lvl.levelNumber}</span>
+                    <div className="flex gap-0.5 mt-1">
+                      {[1, 2, 3].map((starIdx) => (
+                        <span
+                          key={starIdx}
+                          className={`text-xs ${
+                            starIdx <= lvl.stars ? "text-amber-900" : "text-amber-900/30"
+                          }`}
+                        >
+                          ★
+                        </span>
+                      ))}
+                    </div>
+                  </>
                 ) : (
-                  <span className="w-2.5 h-2.5 rounded-full bg-slate-600/60 group-hover:bg-cyan-400 transition-colors" />
+                  <span className="text-2xl">🔒</span>
                 )}
               </button>
-            );
-          })}
+            ))}
+          </div>
         </div>
-      </section>
+      )}
 
-      {/* Footer Info */}
-      <footer className="w-full max-w-md text-center text-xs text-slate-500 z-10 flex items-center justify-between px-2">
-        <span>WCAG 2.1 AA Compliant</span>
-        <span>Next.js 16 • Turbopack</span>
-      </footer>
+      {currentScreen === "playing" && (
+        <div className="w-full max-w-md flex flex-col items-center">
+          <div className="w-full flex items-center justify-between mb-3 px-1">
+            <button
+              onClick={() => setCurrentScreen("map")}
+              aria-label="Back to Level Map"
+              className="px-3 py-1.5 rounded-full bg-white/20 hover:bg-white/30 backdrop-blur-md text-xs font-bold transition-all active:scale-95 flex items-center gap-1 border border-white/20"
+            >
+              <span>⬅</span> Levels
+            </button>
 
-      {/* MODAL 1: LEVEL VICTORY POPUP */}
-      {isWon && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="w-full max-w-sm bg-gradient-to-b from-slate-900 to-slate-950 border border-cyan-500/40 rounded-3xl p-6 shadow-2xl flex flex-col items-center text-center relative overflow-hidden">
-            <div className="absolute -top-12 -left-12 w-32 h-32 bg-cyan-500/20 rounded-full blur-3xl pointer-events-none" />
-            <div className="text-4xl mb-2">🏆</div>
-            <h2 className="text-2xl font-black tracking-wide text-transparent bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text">
-              LEVEL {level} CLEARED!
-            </h2>
-            <p className="text-xs text-slate-400 mt-1">Neural synapses fully synchronized.</p>
-
-            <div className="w-full my-4 grid grid-cols-2 gap-2 bg-slate-900/90 p-3 rounded-2xl border border-slate-800">
-              <div className="flex flex-col">
-                <span className="text-[10px] text-slate-400 uppercase">Total Moves</span>
-                <span className="text-base font-bold text-cyan-400 font-mono">{moves}</span>
-              </div>
-              <div className="flex flex-col">
-                <span className="text-[10px] text-slate-400 uppercase">Time Left</span>
-                <span className="text-base font-bold text-amber-400 font-mono">{timeLeft}s</span>
-              </div>
-            </div>
-
-            {/* Embedded AI Coach Insight Box */}
-            <div className="w-full bg-cyan-950/30 border border-cyan-500/30 rounded-2xl p-3.5 mb-5 text-left">
-              <div className="flex items-center justify-between mb-1.5">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs">🤖</span>
-                  <span className="text-xs font-bold text-cyan-300">AI Neural Coach</span>
-                </div>
-                {aiTier && (
-                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
-                    {aiTier}
-                  </span>
-                )}
-              </div>
-              {aiLoading ? (
-                <p className="text-xs text-slate-400 italic animate-pulse">Analyzing neural efficiency...</p>
-              ) : (
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  {aiAnalysis || "Matrix completed with optimal spatial trajectory. Excellent cognitive tempo."}
-                </p>
-              )}
-            </div>
+            <span className="text-sm font-black bg-pink-500/80 px-3 py-1 rounded-full border border-pink-400">
+              Level {activeLevel}
+            </span>
 
             <button
-              onClick={handleNextLevel}
-              className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black text-sm tracking-wide shadow-lg shadow-cyan-500/25 active:scale-95 transition-all"
+              onClick={() => startLevel(activeLevel)}
+              aria-label="Restart Level"
+              className="px-3 py-1.5 rounded-full bg-white/20 hover:bg-white/30 backdrop-blur-md text-xs font-bold transition-all active:scale-95 border border-white/20"
             >
-              ADVANCE TO LEVEL {level + 1} →
+              🔄 Retry
             </button>
           </div>
+
+          <div className="w-full grid grid-cols-3 gap-2 bg-white/10 backdrop-blur-md rounded-2xl p-2.5 mb-3 border border-white/20 shadow-lg text-center">
+            <div>
+              <div className="text-[10px] text-pink-200 font-bold uppercase">Time</div>
+              <div
+                className={`text-lg font-black ${
+                  timeLeft <= 10 ? "text-rose-400 animate-bounce" : "text-amber-300"
+                }`}
+              >
+                ⏱ {timeLeft}s
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] text-pink-200 font-bold uppercase">Moves</div>
+              <div className="text-lg font-black text-cyan-300">🎯 {moves}</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-pink-200 font-bold uppercase">Pairs</div>
+              <div className="text-lg font-black text-emerald-300">✨ {matchedPairs}/8</div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-4 gap-2.5 w-full aspect-square bg-white/10 backdrop-blur-lg p-3 rounded-3xl border border-white/20 shadow-2xl">
+            {cards.map((card) => {
+              const isRevealed = card.isFlipped || card.isMatched;
+              return (
+                <button
+                  key={card.id}
+                  onClick={() => handleCardClick(card.id)}
+                  disabled={card.isMatched}
+                  aria-label={
+                    card.isMatched
+                      ? `Matched: ${card.emoji}`
+                      : card.isFlipped
+                      ? `Revealed: ${card.emoji}`
+                      : "Hidden Card"
+                  }
+                  className={`aspect-square rounded-2xl flex items-center justify-center text-3xl font-bold transition-all duration-300 transform active:scale-95 shadow-md ${
+                    card.isMatched
+                      ? "bg-emerald-400/80 border-2 border-emerald-200 scale-95 opacity-90 shadow-emerald-400/30"
+                      : isRevealed
+                      ? "bg-white text-slate-900 border-4 border-amber-300 shadow-xl"
+                      : "bg-gradient-to-tr from-pink-500 to-purple-600 border-2 border-pink-300/60 hover:brightness-110"
+                  }`}
+                >
+                  {isRevealed ? (
+                    <span className="animate-in zoom-in-50 duration-200">
+                      {card.emoji}
+                    </span>
+                  ) : (
+                    <span className="text-pink-200 text-xl font-black">?</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 
-      {/* MODAL 2: GAME OVER / LOST POPUP */}
-      {isLost && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="w-full max-w-sm bg-gradient-to-b from-slate-900 to-slate-950 border border-rose-500/40 rounded-3xl p-6 shadow-2xl flex flex-col items-center text-center relative overflow-hidden">
-            <div className="absolute -top-12 -right-12 w-32 h-32 bg-rose-500/20 rounded-full blur-3xl pointer-events-none" />
-            <div className="text-4xl mb-2">⏳</div>
-            <h2 className="text-2xl font-black tracking-wide text-transparent bg-gradient-to-r from-rose-400 to-amber-400 bg-clip-text">
-              TIME EXPIRED!
-            </h2>
-            <p className="text-xs text-slate-400 mt-1">Neural overload: countdown hit 0.</p>
-
-            <div className="w-full my-4 bg-slate-900/90 p-3 rounded-2xl border border-slate-800 flex justify-around">
-              <div className="flex flex-col">
-                <span className="text-[10px] text-slate-400 uppercase">Pairs Found</span>
-                <span className="text-base font-bold text-rose-400 font-mono">{matchedPairs}/8</span>
+      {isWon && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-xs bg-gradient-to-b from-indigo-900 via-purple-900 to-slate-950 border-4 border-yellow-400 rounded-3xl p-6 shadow-2xl flex flex-col items-center text-center relative overflow-hidden animate-in zoom-in-90 duration-300">
+            <div className="flex items-end justify-center gap-2 mb-3 mt-1">
+              <div
+                className={`text-4xl transition-all duration-500 transform ${
+                  starsEarned >= 2
+                    ? "text-yellow-400 drop-shadow-[0_0_12px_rgba(250,204,21,1)] scale-100"
+                    : "text-slate-600 scale-90"
+                }`}
+              >
+                ★
               </div>
-              <div className="flex flex-col">
-                <span className="text-[10px] text-slate-400 uppercase">Level Reached</span>
-                <span className="text-base font-bold text-slate-200 font-mono">{level}</span>
+
+              <div
+                className={`text-6xl -translate-y-2 transition-all duration-700 transform ${
+                  starsEarned >= 1
+                    ? "text-yellow-400 drop-shadow-[0_0_20px_rgba(250,204,21,1)] scale-110 animate-pulse"
+                    : "text-slate-600"
+                }`}
+              >
+                ★
+              </div>
+
+              <div
+                className={`text-4xl transition-all duration-500 transform ${
+                  starsEarned >= 3
+                    ? "text-yellow-400 drop-shadow-[0_0_12px_rgba(250,204,21,1)] scale-100"
+                    : "text-slate-600 scale-90"
+                }`}
+              >
+                ★
               </div>
             </div>
 
-            <div className="flex gap-2 w-full">
+            <h2 className="text-3xl font-black text-amber-300 tracking-wider drop-shadow-md">
+              YOU WIN!
+            </h2>
+
+            <p className="text-xs text-pink-200 font-medium my-3 px-2 leading-relaxed">
+              {aiCheer || "Super memory skills! Keep shining! 🌟"}
+            </p>
+
+            <div className="flex flex-col gap-2 w-full mt-2">
+              {activeLevel < TOTAL_LEVELS && (
+                <button
+                  onClick={() => startLevel(activeLevel + 1)}
+                  className="w-full py-3 rounded-2xl bg-gradient-to-r from-yellow-400 to-amber-500 hover:brightness-110 text-amber-950 font-black text-sm shadow-lg shadow-yellow-500/40 active:scale-95 transition-all"
+                >
+                  NEXT LEVEL ➡
+                </button>
+              )}
+
               <button
-                onClick={() => initializeLevel(level)}
-                className="flex-1 py-3 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-700 transition-all active:scale-95"
+                onClick={() => startLevel(activeLevel)}
+                className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/20 transition-all active:scale-95"
               >
-                Retry Level {level}
+                🔄 Play Again (Get 3 Stars)
               </button>
+
               <button
-                onClick={handleRestartGame}
-                className="flex-1 py-3 px-3 rounded-xl bg-gradient-to-r from-rose-500 to-amber-500 hover:opacity-90 text-slate-950 font-black text-xs transition-all active:scale-95"
+                onClick={() => setCurrentScreen("map")}
+                className="w-full py-2 rounded-xl text-pink-300 font-bold text-xs hover:underline transition-all"
               >
-                Restart Game
+                Levels Map
               </button>
             </div>
           </div>
         </div>
       )}
-    </main>
+
+      {isLost && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-xs bg-gradient-to-b from-slate-900 to-slate-950 border-4 border-rose-500 rounded-3xl p-6 shadow-2xl flex flex-col items-center text-center animate-in zoom-in-90 duration-300">
+            <div className="text-5xl mb-2">⏰</div>
+            <h2 className="text-2xl font-black text-rose-400 tracking-wider">
+              TIME'S UP!
+            </h2>
+            <p className="text-xs text-slate-300 my-3">
+              Don't worry! Try again, you can do it! 💪
+            </p>
+
+            <div className="flex flex-col gap-2 w-full mt-2">
+              <button
+                onClick={() => startLevel(activeLevel)}
+                className="w-full py-3 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-500 hover:brightness-110 text-white font-black text-sm shadow-lg shadow-rose-500/40 active:scale-95 transition-all"
+              >
+                TRY AGAIN 🔄
+              </button>
+
+              <button
+                onClick={() => setCurrentScreen("map")}
+                className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 font-bold text-xs border border-white/20 active:scale-95 transition-all"
+              >
+                Levels Map
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
