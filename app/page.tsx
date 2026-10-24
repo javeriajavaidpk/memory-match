@@ -11,48 +11,30 @@ interface Card {
 }
 
 interface LevelData {
-  levelNumber: number;
-  unlocked: boolean;
   stars: number;
-  bestScore: number;
 }
 
-const TOTAL_LEVELS = 12;
+const LEVELS_PER_PAGE = 12;
 
-const KIDS_THEMES: { title: string; emojis: string[]; bgGradient: string }[] = [
-  {
-    title: "Jungle Safari 🦁",
-    emojis: ["🦁", "🐼", "🐵", "🐘", "🦒", "🦊", "🐰", "🐸"],
-    bgGradient: "from-amber-400 via-orange-400 to-yellow-300",
-  },
-  {
-    title: "Yummy Treats 🍩",
-    emojis: ["🍕", "🍔", "🍦", "🍩", "🍓", "🍟", "🧁", "🍉"],
-    bgGradient: "from-pink-400 via-rose-400 to-amber-200",
-  },
-  {
-    title: "Space Adventure 🚀",
-    emojis: ["🚀", "⭐", "🛸", "🌍", "👾", "🌙", "☄️", "🪐"],
-    bgGradient: "from-indigo-500 via-purple-500 to-sky-400",
-  },
-  {
-    title: "Ocean Wonders 🐬",
-    emojis: ["🐬", "🐙", "🐠", "🦀", "🦈", "🐳", "🐢", "🐡"],
-    bgGradient: "from-cyan-400 via-teal-400 to-blue-400",
-  },
+const KIDS_THEMES = [
+  { emojis: ["🦁", "🐼", "🐵", "🐘", "🦒", "🦊", "🐰", "🐸"] },
+  { emojis: ["🍕", "🍔", "🍦", "🍩", "🍓", "🍟", "🧁", "🍉"] },
+  { emojis: ["🚀", "⭐", "🛸", "🌍", "👾", "🌙", "☄️", "🪐"] },
+  { emojis: ["🐬", "🐙", "🐠", "🦀", "🦈", "🐳", "🐢", "🐡"] },
+  { emojis: ["🚗", "🏎️", "🚀", "🚁", "🚂", "🚜", "🚲", "⛵"] },
+  { emojis: ["🎸", "🎨", "⚽", "🏀", "🎮", "🧸", "🪁", "🎁"] },
 ];
 
 export default function KidsMemoryWorld() {
   const [currentScreen, setCurrentScreen] = useState<"map" | "playing">("map");
   
-  const [levels, setLevels] = useState<LevelData[]>(() => {
-    return Array.from({ length: TOTAL_LEVELS }, (_, i) => ({
-      levelNumber: i + 1,
-      unlocked: i === 0,
-      stars: 0,
-      bestScore: 0,
-    }));
-  });
+  // Track highest unlocked level (starts at 1, goes to infinity)
+  const [highestUnlocked, setHighestUnlocked] = useState<number>(1);
+  // Track stars per level: { [levelNumber]: starsCount }
+  const [levelStars, setLevelStars] = useState<Record<number, number>>({});
+  
+  // Map Pagination: Page 0 = Levels 1-12, Page 1 = Levels 13-24, etc.
+  const [mapPage, setMapPage] = useState<number>(0);
 
   const [activeLevel, setActiveLevel] = useState<number>(1);
   const [cards, setCards] = useState<Card[]>([]);
@@ -92,9 +74,7 @@ export default function KidsMemoryWorld() {
           requestAnimationFrame(frame);
         }
       })();
-    } catch {
-      // Safe fallback
-    }
+    } catch {}
   };
 
   const startLevel = useCallback((lvlNum: number) => {
@@ -120,7 +100,9 @@ export default function KidsMemoryWorld() {
     setFlippedCards([]);
     setMatchedPairs(0);
     setMoves(0);
-    setTimeLeft(50);
+    // Dynamic difficulty: timer tightens slightly but never below 25s
+    const allocatedTime = Math.max(25, 50 - Math.floor((lvlNum - 1) * 1.5));
+    setTimeLeft(allocatedTime);
     setIsWon(false);
     setIsLost(false);
     setStarsEarned(0);
@@ -198,29 +180,30 @@ export default function KidsMemoryWorld() {
     launchPartyBlast();
 
     let earned = 1;
-    if (moves <= 14 && timeLeft >= 20) {
+    if (moves <= 14 && timeLeft >= 15) {
       earned = 3;
     } else if (moves <= 20) {
       earned = 2;
     }
     setStarsEarned(earned);
 
-    fetchAiEvaluation(earned);
+    // Save stars for this level
+    setLevelStars((prev) => ({
+      ...prev,
+      [activeLevel]: Math.max(prev[activeLevel] || 0, earned),
+    }));
 
-    setLevels((prev) =>
-      prev.map((lvl) => {
-        if (lvl.levelNumber === activeLevel) {
-          return {
-            ...lvl,
-            stars: Math.max(lvl.stars, earned),
-          };
-        }
-        if (lvl.levelNumber === activeLevel + 1) {
-          return { ...lvl, unlocked: true };
-        }
-        return lvl;
-      })
-    );
+    // Unlock next level infinitely
+    const nextLevelNum = activeLevel + 1;
+    setHighestUnlocked((prev) => Math.max(prev, nextLevelNum));
+
+    // Automatically update map page if user reached a higher chapter
+    const targetPage = Math.floor((nextLevelNum - 1) / LEVELS_PER_PAGE);
+    if (targetPage > mapPage) {
+      setMapPage(targetPage);
+    }
+
+    fetchAiEvaluation(earned);
   };
 
   const fetchAiEvaluation = async (stars: number) => {
@@ -243,18 +226,38 @@ export default function KidsMemoryWorld() {
     }
   };
 
+  // Generate levels for current world page
+  const currentLevels = Array.from({ length: LEVELS_PER_PAGE }, (_, i) => {
+    const lvlNum = mapPage * LEVELS_PER_PAGE + (i + 1);
+    return {
+      levelNumber: lvlNum,
+      unlocked: lvlNum <= highestUnlocked,
+      stars: levelStars[lvlNum] || 0,
+    };
+  });
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 text-white flex flex-col items-center justify-center p-3 select-none relative font-sans overflow-x-hidden">
+      
+      {/* SCREEN 1: INFINITE LEVELS MAP */}
       {currentScreen === "map" && (
-        <div className="w-full max-w-md bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-6 shadow-2xl flex flex-col items-center animate-in zoom-in-95 duration-200">
-          <div className="text-4xl mb-1">🏰</div>
-          <h1 className="text-3xl font-black text-amber-300 drop-shadow-md tracking-wide">
+        <div className="w-full max-w-md bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-5 shadow-2xl flex flex-col items-center animate-in zoom-in-95 duration-200">
+          <div className="text-3xl mb-1">🏰</div>
+          <h1 className="text-2xl font-black text-amber-300 drop-shadow-md tracking-wide">
             SUPER MEMORY
           </h1>
-          <p className="text-sm font-semibold text-pink-200 mb-6">Select a Level to Play!</p>
+          <div className="flex items-center gap-2 mt-0.5 mb-4">
+            <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-pink-500/80 text-white shadow">
+              World {mapPage + 1}
+            </span>
+            <span className="text-xs font-semibold text-pink-200">
+              ∞ Infinite Levels
+            </span>
+          </div>
 
-          <div className="grid grid-cols-3 gap-4 w-full">
-            {levels.map((lvl) => (
+          {/* 3x4 Grid for Current 12 Levels */}
+          <div className="grid grid-cols-3 gap-3.5 w-full">
+            {currentLevels.map((lvl) => (
               <button
                 key={lvl.levelNumber}
                 disabled={!lvl.unlocked}
@@ -274,7 +277,7 @@ export default function KidsMemoryWorld() {
                         <span
                           key={starIdx}
                           className={`text-xs ${
-                            starIdx <= lvl.stars ? "text-amber-900" : "text-amber-900/30"
+                            starIdx <= lvl.stars ? "text-amber-950 font-bold" : "text-amber-950/25"
                           }`}
                         >
                           ★
@@ -288,9 +291,36 @@ export default function KidsMemoryWorld() {
               </button>
             ))}
           </div>
+
+          {/* Infinite World Navigator Buttons */}
+          <div className="flex items-center justify-between w-full mt-4 pt-3 border-t border-white/10">
+            <button
+              disabled={mapPage === 0}
+              onClick={() => setMapPage((p) => Math.max(0, p - 1))}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                mapPage === 0
+                  ? "opacity-30 cursor-not-allowed text-slate-400"
+                  : "bg-white/20 hover:bg-white/30 text-white cursor-pointer active:scale-95"
+              }`}
+            >
+              ⬅ Prev World
+            </button>
+
+            <span className="text-xs font-extrabold text-amber-300">
+              Levels {mapPage * LEVELS_PER_PAGE + 1} - {(mapPage + 1) * LEVELS_PER_PAGE}
+            </span>
+
+            <button
+              onClick={() => setMapPage((p) => p + 1)}
+              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white/20 hover:bg-white/30 text-white transition-all active:scale-95 cursor-pointer"
+            >
+              Next World ➡
+            </button>
+          </div>
         </div>
       )}
 
+      {/* SCREEN 2: GAMEPLAY ARENA */}
       {currentScreen === "playing" && (
         <div className="w-full max-w-md flex flex-col items-center">
           <div className="w-full flex items-center justify-between mb-3 px-1">
@@ -373,6 +403,7 @@ export default function KidsMemoryWorld() {
         </div>
       )}
 
+      {/* POPUP 1: 3-STAR VICTORY MODAL WITH INFINITE NEXT LEVEL */}
       {isWon && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="w-full max-w-xs bg-gradient-to-b from-indigo-900 via-purple-900 to-slate-950 border-4 border-yellow-400 rounded-3xl p-6 shadow-2xl flex flex-col items-center text-center relative overflow-hidden animate-in zoom-in-90 duration-300">
@@ -417,14 +448,12 @@ export default function KidsMemoryWorld() {
             </p>
 
             <div className="flex flex-col gap-2 w-full mt-2">
-              {activeLevel < TOTAL_LEVELS && (
-                <button
-                  onClick={() => startLevel(activeLevel + 1)}
-                  className="w-full py-3 rounded-2xl bg-gradient-to-r from-yellow-400 to-amber-500 hover:brightness-110 text-amber-950 font-black text-sm shadow-lg shadow-yellow-500/40 active:scale-95 transition-all"
-                >
-                  NEXT LEVEL ➡
-                </button>
-              )}
+              <button
+                onClick={() => startLevel(activeLevel + 1)}
+                className="w-full py-3 rounded-2xl bg-gradient-to-r from-yellow-400 to-amber-500 hover:brightness-110 text-amber-950 font-black text-sm shadow-lg shadow-yellow-500/40 active:scale-95 transition-all"
+              >
+                NEXT LEVEL {activeLevel + 1} ➡
+              </button>
 
               <button
                 onClick={() => startLevel(activeLevel)}
@@ -444,6 +473,7 @@ export default function KidsMemoryWorld() {
         </div>
       )}
 
+      {/* POPUP 2: TIME OVER MODAL */}
       {isLost && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="w-full max-w-xs bg-gradient-to-b from-slate-900 to-slate-950 border-4 border-rose-500 rounded-3xl p-6 shadow-2xl flex flex-col items-center text-center animate-in zoom-in-90 duration-300">
