@@ -12,7 +12,6 @@ interface Card {
 
 const LEVELS_PER_PAGE = 12;
 
-// Dark, vibrant, high-contrast emojis jo white background par chamkein
 const KIDS_THEMES = [
   { emojis: ["🦁", "🐼", "🦊", "🐸", "🐯", "🐵", "🐘", "🦄"] },
   { emojis: ["🍓", "🍉", "🍒", "🍕", "🍔", "🍟", "🍩", "🌮"] },
@@ -21,6 +20,23 @@ const KIDS_THEMES = [
   { emojis: ["🚗", "🏎️", "🚁", "🚂", "🚜", "⛵", "🚒", "🏍️"] },
   { emojis: ["🎮", "🎨", "⚽", "🏀", "🏆", "🎯", "🎸", "🎲"] },
 ];
+
+// Rounded-corner solid star SVG component
+function RoundedStar({ filled }: { filled: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="w-14 h-14 transition-all duration-300 drop-shadow-md"
+      fill={filled ? "#FACC15" : "#334155"}
+      stroke={filled ? "#EAB308" : "#475569"}
+      strokeWidth="1.5"
+      strokeLinejoin="round"
+      strokeLinecap="round"
+    >
+      <path d="M12 2.5l2.7 6.2 6.8.6-5.1 4.5 1.5 6.6-5.9-3.5-5.9 3.5 1.5-6.6-5.1-4.5 6.8-.6L12 2.5z" />
+    </svg>
+  );
+}
 
 export default function KidsMemoryWorld() {
   const [currentScreen, setCurrentScreen] = useState<"map" | "playing">("map");
@@ -40,6 +56,13 @@ export default function KidsMemoryWorld() {
   const [aiCheer, setAiCheer] = useState<string>("");
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Direct safe handler to return to Levels Map
+  const goToLevelsMap = () => {
+    setIsWon(false);
+    setIsLost(false);
+    setCurrentScreen("map");
+  };
 
   const launchPartyBlast = () => {
     try {
@@ -310,7 +333,7 @@ export default function KidsMemoryWorld() {
         <div className="w-full max-w-md flex flex-col items-center">
           <div className="w-full flex items-center justify-between mb-3 px-1">
             <button
-              onClick={() => setCurrentScreen("map")}
+              onClick={goToLevelsMap}
               aria-label="Back to Level Map"
               className="px-3 py-1.5 rounded-full bg-white/20 hover:bg-white/30 backdrop-blur-md text-xs font-bold transition-all active:scale-95 flex items-center gap-1 border border-white/20"
             >
@@ -351,7 +374,7 @@ export default function KidsMemoryWorld() {
             </div>
           </div>
 
-          {/* 4x4 Cards Grid */}
+          {/* Cards Grid */}
           <div className="grid grid-cols-4 gap-2.5 w-full aspect-square bg-white/10 backdrop-blur-lg p-3 rounded-3xl border border-white/20 shadow-2xl">
             {cards.map((card) => {
               const isRevealed = card.isFlipped || card.isMatched;
@@ -389,40 +412,16 @@ export default function KidsMemoryWorld() {
         </div>
       )}
 
-      {/* POPUP 1: 3-STAR VICTORY MODAL */}
+      {/* POPUP 1: 3-STAR VICTORY MODAL WITH SAME-SIZE ROUNDED SOLID YELLOW STARS */}
       {isWon && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="w-full max-w-xs bg-gradient-to-b from-indigo-900 via-purple-900 to-slate-950 border-4 border-yellow-400 rounded-3xl p-6 shadow-2xl flex flex-col items-center text-center relative overflow-hidden animate-in zoom-in-90 duration-300">
-            <div className="flex items-end justify-center gap-2 mb-3 mt-1">
-              <div
-                className={`text-4xl transition-all duration-500 transform ${
-                  starsEarned >= 2
-                    ? "text-yellow-400 drop-shadow-[0_0_12px_rgba(250,204,21,1)] scale-100"
-                    : "text-slate-600 scale-90"
-                }`}
-              >
-                ★
-              </div>
-
-              <div
-                className={`text-6xl -translate-y-2 transition-all duration-700 transform ${
-                  starsEarned >= 1
-                    ? "text-yellow-400 drop-shadow-[0_0_20px_rgba(250,204,21,1)] scale-110 animate-pulse"
-                    : "text-slate-600"
-                }`}
-              >
-                ★
-              </div>
-
-              <div
-                className={`text-4xl transition-all duration-500 transform ${
-                  starsEarned >= 3
-                    ? "text-yellow-400 drop-shadow-[0_0_12px_rgba(250,204,21,1)] scale-100"
-                    : "text-slate-600 scale-90"
-                }`}
-              >
-                ★
-              </div>
+            
+            {/* Same Size, Bigger, Rounded Solid Yellow Stars */}
+            <div className="flex items-center justify-center gap-3 mb-3 mt-1">
+              <RoundedStar filled={starsEarned >= 1} />
+              <RoundedStar filled={starsEarned >= 2} />
+              <RoundedStar filled={starsEarned >= 3} />
             </div>
 
             <h2 className="text-3xl font-black text-amber-300 tracking-wider drop-shadow-md">
@@ -449,7 +448,7 @@ export default function KidsMemoryWorld() {
               </button>
 
               <button
-                onClick={() => setCurrentScreen("map")}
+                onClick={goToLevelsMap}
                 className="w-full py-2 rounded-xl text-pink-300 font-bold text-xs hover:underline transition-all"
               >
                 Levels Map
@@ -480,7 +479,7 @@ export default function KidsMemoryWorld() {
               </button>
 
               <button
-                onClick={() => setCurrentScreen("map")}
+                onClick={goToLevelsMap}
                 className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 font-bold text-xs border border-white/20 active:scale-95 transition-all"
               >
                 Levels Map
