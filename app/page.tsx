@@ -2,6 +2,9 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import confetti from "canvas-confetti";
+import { auth, googleProvider, db } from "@/lib/firebase";
+import { signInWithPopup, signOut, onAuthStateChanged, User } from "firebase/auth";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 
 interface Card {
   id: number;
@@ -21,7 +24,6 @@ const KIDS_THEMES = [
   { emojis: ["🎮", "🎨", "⚽", "🏀", "🏆", "🎯", "🎸", "🎲"] },
 ];
 
-// Rounded-corner solid star SVG component
 function RoundedStar({ filled }: { filled: boolean }) {
   return (
     <svg
@@ -44,6 +46,11 @@ export default function KidsMemoryWorld() {
   const [levelStars, setLevelStars] = useState<Record<number, number>>({});
   const [mapPage, setMapPage] = useState<number>(0);
 
+  // Auth & Profile Modal states
+  const [user, setUser] = useState<User | null>(null);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
+
   const [activeLevel, setActiveLevel] = useState<number>(1);
   const [cards, setCards] = useState<Card[]>([]);
   const [flippedCards, setFlippedCards] = useState<number[]>([]);
@@ -57,7 +64,82 @@ export default function KidsMemoryWorld() {
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Direct safe handler to return to Levels Map
+  // Initial Load & Auth Listener
+  useEffect(() => {
+    const savedLevel = localStorage.getItem("memory_highest_level");
+    const savedStars = localStorage.getItem("memory_stars");
+    if (savedLevel) setHighestUnlocked(parseInt(savedLevel, 10));
+    if (savedStars) {
+      try {
+        setLevelStars(JSON.parse(savedStars));
+      } catch {}
+    }
+
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      setUser(currentUser);
+      if (currentUser) {
+        setIsSyncing(true);
+        try {
+          const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+          if (userDoc.exists()) {
+            const data = userDoc.data();
+            const cloudHighest = data.highestUnlocked || 1;
+            const cloudStars = data.levelStars || {};
+            setHighestUnlocked((prev) => Math.max(prev, cloudHighest));
+            setLevelStars((prev) => ({ ...cloudStars, ...prev }));
+          }
+        } catch (e) {
+          console.error("Cloud restore failed", e);
+        } finally {
+          setIsSyncing(false);
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const saveProgress = async (newHighest: number, newStars: Record<number, number>) => {
+    localStorage.setItem("memory_highest_level", newHighest.toString());
+    localStorage.setItem("memory_stars", JSON.stringify(newStars));
+
+    if (auth.currentUser) {
+      setIsSyncing(true);
+      try {
+        await setDoc(
+          doc(db, "users", auth.currentUser.uid),
+          {
+            highestUnlocked: newHighest,
+            levelStars: newStars,
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+      } catch (err) {
+        console.error("Auto backup failed", err);
+      } finally {
+        setIsSyncing(false);
+      }
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+      setShowLoginModal(false);
+    } catch (error) {
+      console.error("Google sign in error", error);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Logout error", error);
+    }
+  };
+
   const goToLevelsMap = () => {
     setIsWon(false);
     setIsLost(false);
@@ -201,13 +283,17 @@ export default function KidsMemoryWorld() {
     }
     setStarsEarned(earned);
 
-    setLevelStars((prev) => ({
-      ...prev,
-      [activeLevel]: Math.max(prev[activeLevel] || 0, earned),
-    }));
-
     const nextLevelNum = activeLevel + 1;
-    setHighestUnlocked((prev) => Math.max(prev, nextLevelNum));
+    const updatedHighest = Math.max(highestUnlocked, nextLevelNum);
+    const updatedStars = {
+      ...levelStars,
+      [activeLevel]: Math.max(levelStars[activeLevel] || 0, earned),
+    };
+
+    setHighestUnlocked(updatedHighest);
+    setLevelStars(updatedStars);
+
+    saveProgress(updatedHighest, updatedStars);
 
     const targetPage = Math.floor((nextLevelNum - 1) / LEVELS_PER_PAGE);
     if (targetPage > mapPage) {
@@ -252,6 +338,60 @@ export default function KidsMemoryWorld() {
       {/* SCREEN 1: LEVEL MAP */}
       {currentScreen === "map" && (
         <div className="w-full max-w-md bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-5 shadow-2xl flex flex-col items-center animate-in zoom-in-95 duration-200">
+          
+          {/* Kids Top Gamer Header */}
+          <div className="w-full flex items-center justify-between mb-3 pb-2.5 border-b border-white/15">
+            {user ? (
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  {user.photoURL ? (
+                    <img src={user.photoURL} alt="Hero Avatar" className="w-9 h-9 rounded-full border-2 border-yellow-400 shadow-md" />
+                  ) : (
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-pink-500 to-yellow-400 flex items-center justify-center text-base font-bold shadow-md">
+                      🦸
+                    </div>
+                  )}
+                  <span className="absolute -bottom-1 -right-1 text-xs">⭐</span>
+                </div>
+                <div className="text-left">
+                  <p className="text-xs font-black text-amber-300 drop-shadow-sm leading-tight">
+                    {user.displayName?.split(" ")[0] || "Hero Kid"}
+                  </p>
+                  <span className="text-[10px] text-emerald-300 font-bold flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    {isSyncing ? "Saving..." : "Stars Saved"}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-left">
+                <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-sm">
+                  🎮
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-pink-200">Guest Player</p>
+                  <span className="text-[10px] text-yellow-300/80 font-medium">Progress on Device</span>
+                </div>
+              </div>
+            )}
+
+            {user ? (
+              <button
+                onClick={handleLogout}
+                className="text-[11px] font-bold px-3 py-1.5 rounded-xl bg-white/10 hover:bg-rose-500/30 text-rose-200 border border-white/20 transition-all active:scale-95"
+              >
+                Log Out
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowLoginModal(true)}
+                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-yellow-400 to-amber-500 hover:brightness-110 text-amber-950 font-black text-xs shadow-md shadow-yellow-500/30 transition-all active:scale-95 flex items-center gap-1"
+              >
+                <span>⭐</span> Save Stars
+              </button>
+            )}
+          </div>
+
           <div className="text-3xl mb-1">🏰</div>
           <h1 className="text-2xl font-black text-amber-300 drop-shadow-md tracking-wide">
             SUPER MEMORY
@@ -374,7 +514,6 @@ export default function KidsMemoryWorld() {
             </div>
           </div>
 
-          {/* Cards Grid */}
           <div className="grid grid-cols-4 gap-2.5 w-full aspect-square bg-white/10 backdrop-blur-lg p-3 rounded-3xl border border-white/20 shadow-2xl">
             {cards.map((card) => {
               const isRevealed = card.isFlipped || card.isMatched;
@@ -412,12 +551,10 @@ export default function KidsMemoryWorld() {
         </div>
       )}
 
-      {/* POPUP 1: 3-STAR VICTORY MODAL WITH SAME-SIZE ROUNDED SOLID YELLOW STARS */}
+      {/* POPUP 1: 3-STAR VICTORY MODAL */}
       {isWon && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="w-full max-w-xs bg-gradient-to-b from-indigo-900 via-purple-900 to-slate-950 border-4 border-yellow-400 rounded-3xl p-6 shadow-2xl flex flex-col items-center text-center relative overflow-hidden animate-in zoom-in-90 duration-300">
-            
-            {/* Same Size, Bigger, Rounded Solid Yellow Stars */}
             <div className="flex items-center justify-center gap-3 mb-3 mt-1">
               <RoundedStar filled={starsEarned >= 1} />
               <RoundedStar filled={starsEarned >= 2} />
@@ -485,6 +622,55 @@ export default function KidsMemoryWorld() {
                 Levels Map
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* POPUP 3: PLAYFUL KIDS LOGIN MODAL */}
+      {showLoginModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-xs bg-gradient-to-b from-indigo-900 via-purple-900 to-slate-950 border-4 border-amber-300 rounded-3xl p-6 shadow-2xl flex flex-col items-center text-center relative overflow-hidden animate-in zoom-in-90 duration-200">
+            <div className="text-5xl mb-2 animate-bounce">🎈</div>
+            <h3 className="text-2xl font-black text-amber-300 tracking-wide">
+              Hero Kid Login!
+            </h3>
+            <p className="text-xs text-pink-200 mt-1 mb-5 leading-relaxed">
+              Connect your Google account so your stars and unlocked levels are never lost! 🛡️✨
+            </p>
+
+            {/* Cartoon Pop 3D Google Button */}
+            <button
+              onClick={handleGoogleLogin}
+              className="w-full py-3 px-4 rounded-2xl bg-white hover:bg-yellow-50 text-slate-900 font-extrabold text-xs shadow-lg shadow-white/20 flex items-center justify-center gap-2 border-b-4 border-slate-300 active:border-b-0 active:translate-y-1 transition-all"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24">
+                <path
+                  fill="#4285F4"
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                />
+              </svg>
+              <span>Continue with Google</span>
+            </button>
+
+            {/* Guest button */}
+            <button
+              onClick={() => setShowLoginModal(false)}
+              className="w-full mt-3 py-2 text-xs font-bold text-pink-300 hover:text-white transition-colors"
+            >
+              Continue Playing as Guest 🎮
+            </button>
           </div>
         </div>
       )}
